@@ -1,6 +1,8 @@
 import os
+import argparse
 from dotenv import load_dotenv
 from google import genai
+from google.genai import types
 
 def main():
     load_dotenv()
@@ -8,9 +10,26 @@ def main():
     if api_key == None:
         raise RuntimeError("Missing GEMINI_API_KEY")
 
+    parser = argparse.ArgumentParser(description="Chatbot")
+    parser.add_argument("prompt", type=str, help="User prompt")
+    parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
+    args = parser.parse_args()
+
+    messages = [types.Content(role="user", parts=[types.Part(text=args.prompt)])]
+
     client = genai.Client(api_key=api_key)
+
     model = "gemini-2.5-flash"
-    resposne = client.models.generate_content(model=model, contents="Why is Boot.dev such a great place to learn backend development? Use one paragraph maximum.")
+
+    resposne = client.models.generate_content(model=model, contents=messages)
+    if resposne.usage_metadata == None:
+        raise RuntimeError("The client responded with a None")
+
+    if args.verbose:
+        print(f"User prompt: {args.prompt}")
+        print(f"Prompt tokens: {resposne.usage_metadata.prompt_token_count}")
+        print(f"Response tokens: {resposne.usage_metadata.candidates_token_count}")
+    print("Response:")
     print(resposne.text)
 
 
