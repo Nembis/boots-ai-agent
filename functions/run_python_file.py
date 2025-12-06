@@ -18,18 +18,20 @@ def run_python_file(working_directory, file_path, args=[]):
             ["python", full_file_path] + args,
             capture_output=True,
             text=True,
-            timeout=30
+            timeout=30,
+            cwd=full_working_dir
         )
 
-        match result.returncode:
-            case 0:
-                if result.stdout == "":
-                    return "No output produced"
-                return f"STDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}"
+        output = []
+        if result.stdout:
+            output.append(f"STDOUT:\n{result.stdout}")
+        if result.stderr:
+            output.append(f"STDERR:\n{result.stderr}")
+        
+        if result.returncode != 0:
+            output.append(f"Process exited with code {result.returncode}")
 
-            case _:
-                return f"Process exited with code {result.returncode}"
-
+        return "\n".join(output) if output else f"No output produced."
     except Exception as e:
         return f"Error: executing Python file: {e}"
 

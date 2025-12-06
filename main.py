@@ -8,6 +8,7 @@ from functions.get_files_info import schema_get_files_info
 from functions.get_file_content import schema_get_file_content
 from functions.run_python_file import schema_run_python_file
 from functions.write_file import schema_write_file
+from functions.call_function import call_function
 
 def main():
     load_dotenv()
@@ -51,9 +52,15 @@ def main():
         print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
         print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
 
+    response_list = []
     if response.function_calls != None:
         for function_call_part in response.function_calls:
-            print(f"Calling function: {function_call_part.name}({function_call_part.args})")
+            function_call_response: types.Content = call_function(function_call_part, verbose=args.verbose)
+            if function_call_response.parts == None:
+                raise Exception(f"Fatal: Tool failed to run {function_call_part.name}")
+            response_list.append(function_call_response.parts[0])
+            print(f"Result: {function_call_response.parts[0].function_response.response}")
+
     print()
     if response.text != None:
         print("Text Response:")
