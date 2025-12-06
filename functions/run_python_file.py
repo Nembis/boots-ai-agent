@@ -1,0 +1,33 @@
+import os
+import subprocess
+
+def run_python_file(working_directory, file_path, args=[]):
+    full_working_dir = os.path.abspath(working_directory)
+    full_file_path = os.path.join(full_working_dir, file_path)
+    full_file_path = os.path.abspath(full_file_path)
+    if not full_file_path.startswith(full_working_dir):
+        return f'Error: Cannot execute "{file_path}" as it is outside the permitted working directory'
+    if not os.path.exists(full_file_path):
+        return f'Error: File "{file_path}" not found.'
+    if not full_file_path.endswith(".py"):
+        return f'Error: "{file_path}" is not a Python file.'
+
+    try:
+        result = subprocess.run(
+            ["python", full_file_path] + args,
+            capture_output=True,
+            text=True,
+            timeout=30
+        )
+
+        match result.returncode:
+            case 0:
+                if result.stdout == "":
+                    return "No output produced"
+                return f"STDOUT:\n{result.stdout}\n\nSTDERR:\n{result.stderr}"
+
+            case _:
+                return f"Process exited with code {result.returncode}"
+
+    except Exception as e:
+        return f"Error: executing Python file: {e}"

@@ -3,6 +3,8 @@ import argparse
 from dotenv import load_dotenv
 from google import genai
 from google.genai import types
+from prompts import system_prompt
+from functions.get_files_info import schema_get_files_info
 
 def main():
     load_dotenv()
@@ -16,21 +18,38 @@ def main():
     args = parser.parse_args()
 
     messages = [types.Content(role="user", parts=[types.Part(text=args.prompt)])]
+    available_functions = types.Tool(
+        function_declarations=[schema_get_files_info]
+    )
 
     client = genai.Client(api_key=api_key)
 
     model = "gemini-2.5-flash"
 
-    resposne = client.models.generate_content(model=model, contents=messages)
-    if resposne.usage_metadata == None:
+    response = client.models.generate_content(
+            model=model, 
+            contents=messages,
+            config=types.GenerateContentConfig(
+                system_instruction=system_prompt,
+                tools=[available_functions]
+            )
+        )
+    if response.usage_metadata == None:
         raise RuntimeError("The client responded with a None")
 
+    print("Response:")
     if args.verbose:
         print(f"User prompt: {args.prompt}")
-        print(f"Prompt tokens: {resposne.usage_metadata.prompt_token_count}")
-        print(f"Response tokens: {resposne.usage_metadata.candidates_token_count}")
-    print("Response:")
-    print(resposne.text)
+        print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
+        print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
+
+    if response.function_calls != None:
+        for function_call_part in response.function_calls:
+            print(f"Calling function: {function_call_part.name}({function_call_part.args})")
+    print()
+    if response.text != None:
+        print("Text Response:")
+        print(response.text)
 
 
     
