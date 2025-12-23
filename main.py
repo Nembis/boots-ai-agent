@@ -1,4 +1,5 @@
 import os
+import sys
 import argparse
 from dotenv import load_dotenv
 from google import genai
@@ -9,6 +10,17 @@ from functions.get_file_content import schema_get_file_content
 from functions.run_python_file import schema_run_python_file
 from functions.write_file import schema_write_file
 from functions.call_function import call_function
+from config import MODEL, MAX_ITERATIONS
+
+
+available_functions = [
+    types.Tool(function_declarations=[
+        schema_get_files_info,
+        schema_get_file_content,
+        schema_run_python_file,
+        schema_write_file
+    ])
+]
 
 def main():
     load_dotenv()
@@ -22,53 +34,63 @@ def main():
     args = parser.parse_args()
 
     messages = [types.Content(role="user", parts=[types.Part(text=args.prompt)])]
-    available_functions = [
-        types.Tool(function_declarations=[
-            schema_get_files_info,
-            schema_get_file_content,
-            schema_run_python_file,
-            schema_write_file
-        ])
-    ]
 
     client = genai.Client(api_key=api_key)
 
-    model = "gemini-2.5-flash"
+    iter = 0
+    while True:
+        iter += 1
+        if iter > MAX_ITERATIONS:
+            print(f"Maximum iterations ({MAX_ITERATIONS}) reached.")
+            sys.exit(1)
 
+        try:
+            final_response = generate_content(client, messages, args.verbose)
+            if final_response:
+                print("Final Response:")
+                print(final_response)
+                break
+        except Exception as e:
+            print(f"Error: while in loop {e}")
+            break
+
+def generate_content(client, messages, verbose):
     response = client.models.generate_content(
-            model=model, 
+            model=MODEL, 
             contents=messages,
             config=types.GenerateContentConfig(
                 system_instruction=system_prompt,
                 tools=available_functions
             )
         )
-    if response.usage_metadata == None:
-        raise RuntimeError("The client responded with a None")
+    if not response.usage_metadata:
+        raise RuntimeError("Gemini API response appears to be malformed")
 
-    print("Response:")
-    if args.verbose:
-        print(f"User prompt: {args.prompt}")
+    if verbose:
         print(f"Prompt tokens: {response.usage_metadata.prompt_token_count}")
         print(f"Response tokens: {response.usage_metadata.candidates_token_count}")
 
+    if response.candidates:
+        for candidate in response.candidates:
+            messages.append(candidate.content)
+
+    if not response.function_calls:
+        return response.text
+
     response_list = []
-    if response.function_calls != None:
-        for function_call_part in response.function_calls:
-            function_call_response: types.Content = call_function(function_call_part, verbose=args.verbose)
-            if function_call_response.parts == None:
-                raise Exception(f"Fatal: Tool failed to run {function_call_part.name}")
-            response_list.append(function_call_response.parts[0])
-            print(f"Result: {function_call_response.parts[0].function_response.response}")
+    for function_call_part in response.function_calls:
+        function_call_response: types.Content = call_function(function_call_part, verbose=verbose)
+        if (
+            not function_call_response.parts or
+            not function_call_response.parts[0].function_response or
+            not function_call_response.parts[0].function_response.response
+        ):
+            raise Exception("empty function call result")
+        if verbose:
+            print(f"-> {function_call_response.parts[0].function_response.response}")
+        response_list.append(function_call_response.parts[0])
 
-    print()
-    if response.text != None:
-        print("Text Response:")
-        print(response.text)
-
-
-    
-
+    messages.append(types.Content(parts=response_list, role="user"))
 
 
 if __name__ == "__main__":
